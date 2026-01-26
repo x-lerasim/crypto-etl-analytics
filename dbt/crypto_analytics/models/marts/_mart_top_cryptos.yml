@@ -1,0 +1,55 @@
+version: 2
+
+models:
+  - name: mart_top_cryptos
+    description: "Top 100 crypto assets with market metrics"
+    columns:
+      - name: market_rank
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 100
+      - name: market_share_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: rank_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Top_10', 'Top_50', 'Top_100', 'Other']
+      - name: price_movement_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Strong_Growth', 'Growth', 'Decline', 'Strong_Decline']
+
+  - name: mart_market_overview
+    description: "Daily market overview with BTC/ETH dominance"
+    columns:
+      - name: total_market_cap
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+      - name: btc_dominance_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: eth_dominance_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: market_sentiment
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Very Bullish', 'Bullish', 'Bearish', 'Very Bearish']

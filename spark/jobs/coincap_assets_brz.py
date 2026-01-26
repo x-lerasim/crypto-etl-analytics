@@ -1,0 +1,119 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, from_unixtime, to_date, lit
+from requests.exceptions import RequestException
+import requests
+import logging
+import time
+import os
+import argparse
+
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('Raw')
+logger.info('Ingesting raw data from API to MinIO')
+
+BASE_URL = 'https://rest.coincap.io/v3'
+API_KEY = os.environ.get(
+    "COINCAP_API_KEY", 
+    "e0bd6941eb5cf15c756be46b494c982248ccbc3ab4ff976d9b905c1067994e63"
+)
+
+
+if not API_KEY:
+    logger.critical("COINCAP_API_KEY environment variable is not set")
+    raise ValueError("COINCAP_API_KEY is required")
+
+HEADERS = {
+    'Authorization': f'Bearer {API_KEY}'
+}
+
+def get_assets(max_retries=3, timeout=30):
+    URL=f"{BASE_URL}/assets"
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"API Request attempt {attempt + 1}/{max_retries}")
+            
+            response = requests.get(URL, headers=HEADERS, timeout=timeout)
+            response.raise_for_status()
+            
+            data = response.json()
+
+            if 'data' not in data or 'timestamp' not in data:
+                raise ValueError("Invalid API response structure")
+            
+            if not data['data']:
+                raise ValueError("API returned empty data array - this is unexpected")
+            
+            logger.info(f"Successfully fetched {len(data['data'])} assets")
+            return data
+        
+        except RequestException as e:
+            logger.error(f"Request failed (attempt {attempt + 1}): {str(e)}")
+
+            if attempt == max_retries - 1:
+                logger.critical("All retry attempts exhausted")
+                raise
+
+            wait_time = 2 ** attempt
+            logger.info(f"Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+        
+        except ValueError as e:
+            logger.error(f"Data validation error: {str(e)}")
+            raise
+
+def main():
+    "API -> Raw"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--execution-date", help="Date in YYYY-MM-DD format")
+    args = parser.parse_args()
+
+    exec_date = args.execution_date if args.execution_date else time.strftime("%Y-%m-%d")
+    logger.info(f"Running incremental load for date: {exec_date}")
+
+    spark = None
+
+    try:
+        spark = SparkSession.builder \
+                .appName("CryptoRawIngestion") \
+                .config("spark.sql.shuffle.partitions", "1") \
+                .getOrCreate()
+        logger.info("Spark session created successfully")
+
+        assets_json = get_assets()
+
+        api_timestamp = assets_json["timestamp"]
+        data = assets_json["data"]
+        
+        df = spark.createDataFrame(data)
+        df = df.withColumn('timestamp', lit(api_timestamp))
+        df = df.withColumn('load_date', lit(exec_date).cast("date"))
+        df = df.withColumn('load_datetime', from_unixtime(lit(time.time())))
+
+        initial_count = df.count()
+
+        raw_path = "s3a://raw/assets/"
+
+        df.write \
+            .mode('overwrite') \
+            .option('partitionOverwriteMode', 'dynamic') \
+            .partitionBy('load_date') \
+            .parquet(raw_path)
+        
+        logger.info(f"✅ Successfully loaded {initial_count} records to raw layer")
+    
+    except Exception as e:
+        logger.critical(f"❌ Job failed with error: {str(e)}", exc_info=True)
+        raise
+    
+    finally:
+        if spark:
+            spark.stop()
+            logger.info("Spark session stopped")
+
+if __name__ == "__main__":
+    main()

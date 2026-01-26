@@ -1,0 +1,6 @@
+version: 2
+sources:
+  - name: crypto_staging
+    schema: crypto
+    tables:
+      - name: dim_assets

@@ -1,0 +1,22 @@
+version: 2
+
+models:
+  - name: int_crypto__enriched_assets
+    description: "Intermediate layer for crypto assets from CoinCap API"
+    columns:
+      - name: rank_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Top_10', 'Top_50', 'Top_100', 'Other']
+      - name: price_movement_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['Strong_Growth', 'Growth', 'Decline', 'Strong_Decline']
+      - name: market_share_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100

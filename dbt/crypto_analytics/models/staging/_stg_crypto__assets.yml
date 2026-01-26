@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: stg_crypto__assets
+    description: "Staging layer for crypto assets from CoinCap API"
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - asset_id
+            - load_date
+    columns:
+      - name: asset_id
+        tests:
+          - not_null
+      - name: symbol
+        tests:
+          - not_null
+      - name: asset_name
+        tests:
+          - not_null
+      - name: market_rank
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: price_usd
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+      - name: market_cap
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: false
+      - name: load_date
+        tests:
+          - not_null
+      - name: loaded_at
+        tests:
+          - not_null
