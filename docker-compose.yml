@@ -11,10 +11,8 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    networks:
+      - data-network
 
   clickhouse:
     image: clickhouse/clickhouse-server:latest
@@ -29,24 +27,22 @@ services:
       CLICKHOUSE_USER: admin
       CLICKHOUSE_PASSWORD: admin
       CLICKHOUSE_DB: stockhouse
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    networks:
+      - data-network
 
   spark-master:
     image: apache/spark:3.5.1
     container_name: spark-master
     ports:
-      - "8080:8080"
+      - "8082:8080"
       - "7077:7077"
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
+      - ./spark/conf:/opt/spark/conf
       - ./spark/jobs:/opt/spark/jobs
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+      - spark_ivy_cache:/home/spark/.ivy2
+    networks:
+      - data-network
 
   spark-worker:
     image: apache/spark:3.5.1
@@ -55,14 +51,14 @@ services:
       - spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
+      - ./spark/conf:/opt/spark/conf
       - ./spark/jobs:/opt/spark/jobs
+      - spark_ivy_cache:/home/spark/.ivy2
     environment:
-      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_MEMORY=2G
       - SPARK_WORKER_CORES=2
-    deploy:
-      resources:
-        limits:
-          memory: 1G
+    networks:
+      - data-network
 
   airflow-postgres:
     image: postgres:15
@@ -73,16 +69,30 @@ services:
       POSTGRES_DB: airflow
     volumes:
       - airflow_postgres:/var/lib/postgresql/data
-    deploy:
-      resources:
-        limits:
-          memory: 256M
+    networks:
+      - data-network
+
+  airflow-init:
+    image: apache/airflow:2.7.0
+    container_name: airflow-init
+    depends_on:
+      - airflow-postgres
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ''
+      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    command: >
+      bash -c "airflow db init && 
+               airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com"
+    networks:
+      - data-network
 
   airflow-webserver:
     image: apache/airflow:2.7.0
     container_name: airflow-webserver
     depends_on:
-      - airflow-postgres
+      - airflow-init
     ports:
       - "8081:8080"
     environment:
@@ -92,18 +102,15 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - ./spark/jobs:/opt/airflow/spark_jobs
     command: webserver
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    networks:
+      - data-network
 
   airflow-scheduler:
     image: apache/airflow:2.7.0
     container_name: airflow-scheduler
     depends_on:
-      - airflow-postgres
+      - airflow-init
     environment:
       AIRFLOW__CORE__EXECUTOR: LocalExecutor
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
@@ -111,14 +118,39 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     volumes:
       - ./airflow/dags:/opt/airflow/dags
-      - ./spark/jobs:/opt/airflow/spark_jobs
     command: scheduler
-    deploy:
-      resources:
-        limits:
-          memory: 512M
+    networks:
+      - data-network
+
+  jupyter:
+    image: jupyter/pyspark-notebook:latest
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=1234
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./spark/jobs:/home/jovyan/spark_jobs
+    networks:
+      - data-network
+
+  dbt:
+    image: python:3.11-slim
+    container_name: dbt
+    volumes:
+      - ./dbt:/usr/app
+      - ./dbt/.dbt:/root/.dbt
+    working_dir: /usr/app
+    networks:
+      - data-network
+    entrypoint: ["tail", "-f", "/dev/null"]
 
 volumes:
   minio_data:
   clickhouse_data:
   airflow_postgres:
+  spark_ivy_cache:
+networks:
+  data-network:
+    driver: bridge
