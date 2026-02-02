@@ -29,6 +29,12 @@ services:
       CLICKHOUSE_DB: stockhouse
     networks:
       - data-network
+    healthcheck: # <-- ДОБАВЬТЕ ЭТОТ БЛОК
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   spark-master:
     image: apache/spark:3.5.1
@@ -134,18 +140,22 @@ services:
       - ./spark/jobs:/home/jovyan/spark_jobs
     networks:
       - data-network
-
   dbt:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: docker/dbt.Dockerfile
     container_name: dbt
+    depends_on:
+      clickhouse:
+        condition: service_healthy 
     volumes:
       - ./dbt:/usr/app
       - ./dbt/.dbt:/root/.dbt
-    working_dir: /usr/app
+    working_dir: /usr/app/crypto_analytics
     networks:
       - data-network
+   
     entrypoint: ["tail", "-f", "/dev/null"]
-
 volumes:
   minio_data:
   clickhouse_data:
