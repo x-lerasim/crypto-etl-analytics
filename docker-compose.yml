@@ -1,4 +1,36 @@
+
 services:
+  metabase-postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    volumes:
+      - metabase_db_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: metabaseuser
+      POSTGRES_PASSWORD: metabasepassword
+      POSTGRES_DB: metabase
+    networks:
+      - data-network 
+
+  metabase:
+    image: metabase/metabase:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: metabaseuser
+      MB_DB_PASS: metabasepassword
+      MB_DB_HOST: metabase-postgres
+    volumes:
+      - metabase_app_data:/var/lib/metabase
+    networks:
+      - data-network 
+    depends_on:
+      metabase-postgres:
+        condition: service_started
   minio:
     image: minio/minio:latest
     container_name: minio
@@ -137,7 +169,7 @@ services:
     environment:
       - JUPYTER_TOKEN=1234
     volumes:
-      - ./notebooks:/home/jovyan/work
+      - ./notebooks:/home/jovyan/notebook
       - ./spark/jobs:/home/jovyan/spark_jobs
     networks:
       - data-network
@@ -155,13 +187,15 @@ services:
     working_dir: /usr/app/crypto_analytics
     networks:
       - data-network
-   
     entrypoint: ["tail", "-f", "/dev/null"]
+ 
 volumes:
   minio_data:
   clickhouse_data:
   airflow_postgres:
   spark_ivy_cache:
+  metabase_db_data:
+  metabase_app_data:
 networks:
   data-network:
     driver: bridge
