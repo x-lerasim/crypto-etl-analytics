@@ -1,20 +1,50 @@
 from pyspark.sql import SparkSession
+import logging
+import os
 
-spark = SparkSession.builder.appName("crypto_dim").getOrCreate()
+logging.basicConfig(
+    level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('Clickhouse')
 
-df = spark.read.parquet("s3a://core/dim_assets/")
+def main():
+  spark = None
+  try:
+    spark = SparkSession.builder \
+       .appName("CoreloadClickhouse") \
+       .getOrCreate()
 
-df.write \
-  .format("clickhouse") \
-  .option("host", "clickhouse") \
-  .option("port", "8123") \
-  .option("database", "crypto") \
-  .option("table", "dim_assets") \
-  .option("user", "admin") \
-  .option("password", "admin") \
-  .mode("append") \
-  .save()
+    core_path = "s3a://core/dim_assets/"
+    df = spark.read.parquet(core_path)
 
 
+    ch_options = {
+        "host":     os.environ["CLICKHOUSE_HOST"],
+        "port":     os.environ["CLICKHOUSE_PORT"],
+        "user":     os.environ["CLICKHOUSE_USER"],
+        "password": os.environ["CLICKHOUSE_PASSWORD"],
+        "database": os.environ["CLICKHOUSE_DB"],
+        "table":    os.environ["CLICKHOUSE_TABLE"]
+      }
+    
+    logger.info("📤 Sending data to ClickHouse...")
+    df.write \
+      .format("clickhouse") \
+      .options(**ch_options) \
+      .option("create_table_options", "ENGINE = ReplacingMergeTree(load_datetime)") \
+      .option("order_by", "load_date, asset_id") \
+      .option("partition_by", "toYYYYMM(load_date)") \
+      .option("primary_key", "load_date, asset_id") \
+      .mode("append") \
+      .save()
+    
+  except Exception as e:
+     logger.critical(f"❌ Job failed: {str(e)}", exc_info=True)
 
-spark.stop()
+  finally:
+    if spark:
+       spark.stop()
+
+if __name__ == "__main__":
+    main()

@@ -1,16 +1,16 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, from_unixtime, to_date, lit
+from requests.exceptions import RequestException
 import requests
 import logging
 import time
 import os
-from requests.exceptions import RequestException
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger('raw')
+logger = logging.getLogger('Raw')
 logger.info('Ingesting raw data from API to MinIO')
 
 BASE_URL = 'https://rest.coincap.io/v3'
@@ -82,12 +82,13 @@ def main():
 
         initial_count = df.count()
 
-        output_path = "s3a://raw/assets/"
+        raw_path = "s3a://raw/assets/"
 
         df.write \
-            .mode('append') \
+            .mode('overwrite') \
+            .option('partitionOverwriteMode', 'dynamic') \
             .partitionBy('load_date') \
-            .parquet(output_path)
+            .parquet(raw_path)
         
         logger.info(f"✅ Successfully loaded {initial_count} records to raw layer")
     
