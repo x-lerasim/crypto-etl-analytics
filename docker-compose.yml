@@ -1,7 +1,10 @@
 ---
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.3}
+  build:
+      context: .
+      dockerfile: docker/airflow.Dockerfile
+  image: apache/airflow
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -16,10 +19,14 @@ x-airflow-common:
     AIRFLOW__CORE__TEST_CONNECTION: 'Enabled'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
-    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
-    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
-    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    - spark_ivy_cache:/home/airflow/.ivy2
+    - ./spark/conf:/opt/spark/conf
+    - ./spark/jobs:/opt/spark/jobs
+    - ./airflow/dags:/opt/airflow/dags  
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/config:/opt/airflow/config
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/jobs:/opt/airflow/jobs
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -30,6 +37,7 @@ x-airflow-common:
 services:
   airflow-postgres:
     image: postgres:13
+    container_name: airflow_postgres
     environment:
       POSTGRES_USER: ${AIRFLOW_PG_USER}
       POSTGRES_PASSWORD: ${AIRFLOW_PG_PASS}
@@ -44,6 +52,7 @@ services:
     restart: always
 
   airflow-redis:
+    container_name: airflow_redis
     image: redis:7.2-bookworm
     expose:
       - 6379
@@ -58,6 +67,7 @@ services:
   airflow-webserver:
     <<: *airflow-common
     command: webserver
+    container_name: airflow-webserver
     ports:
       - "8080:8080"
     healthcheck:
@@ -75,6 +85,7 @@ services:
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
+    container_name: airflow-scheduler
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -82,6 +93,10 @@ services:
       retries: 5
       start_period: 30s
     restart: always
+    volumes:
+      - spark_ivy_cache:/home/airflow/.ivy2
+      - ./spark/conf:/opt/spark/conf
+      - ./spark/jobs:/opt/spark/jobs
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -90,6 +105,7 @@ services:
   airflow-worker:
     <<: *airflow-common
     command: celery worker
+    container_name: airflow-worker
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -102,6 +118,10 @@ services:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
     restart: always
+    volumes:
+      - spark_ivy_cache:/home/airflow/.ivy2
+      - ./spark/conf:/opt/spark/conf
+      - ./spark/jobs:/opt/spark/jobs
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -110,6 +130,7 @@ services:
   airflow-triggerer:
     <<: *airflow-common
     command: triggerer
+    container_name: airflow-triggerer
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -125,6 +146,7 @@ services:
   airflow-init:
     <<: *airflow-common
     entrypoint: /bin/bash
+    container_name: airflow-init
     command:
       - -c
       - |
@@ -170,8 +192,6 @@ services:
           echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
           echo
         fi
-        mkdir -p /sources/logs /sources/dags /sources/plugins
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
         exec /entrypoint airflow version
     environment:
       <<: *airflow-common-env
@@ -182,38 +202,9 @@ services:
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
     volumes:
-      - ${AIRFLOW_PROJ_DIR:-.}:/sources
-
-  airflow-cli:
-    <<: *airflow-common
-    profiles:
-      - debug
-    environment:
-      <<: *airflow-common-env
-      CONNECTION_CHECK_MAX_COUNT: "0"
-    command:
-      - bash
-      - -c
-      - airflow
-
-  flower:
-    <<: *airflow-common
-    command: celery flower
-    profiles:
-      - flower
-    ports:
-      - "5555:5555"
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    restart: always
-    depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
   metabase-postgres:
     image: postgres:15-alpine
     restart: unless-stopped
@@ -223,6 +214,8 @@ services:
       POSTGRES_USER: ${METABASE_POSTGRES_USER}
       POSTGRES_PASSWORD: ${METABASE_POSTGRES_PASSWORD}
       POSTGRES_DB: ${METABASE_POSTGRES_DB}
+    profiles:
+      - dev
     networks:
       - data-network 
     healthcheck:
@@ -234,6 +227,7 @@ services:
 
   metabase:
     image: metabase/metabase:v0.58.5.x
+    container_name: metabase
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -246,6 +240,8 @@ services:
       MB_DB_HOST: ${MB_DB_HOST}
     volumes:
       - metabase_app_data:/var/lib/metabase
+    profiles:
+      - dev
     networks:
       - data-network 
     depends_on:
@@ -298,10 +294,10 @@ services:
     build:
       context: .
       dockerfile: docker/spark-master.Dockerfile
-    image: custom-spark-master:3.5.1
+    image: spark-master:3.5.1
     container_name: spark-master
     ports:
-      - "8082:8080"
+      - "9090:8080"
       - "7077:7077"
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     working_dir: /opt/spark/jobs
@@ -317,9 +313,6 @@ services:
   spark-worker:
     image: apache/spark:3.5.1
     container_name: spark-worker
-    depends_on:
-      - spark-master
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
       - ./spark/conf:/opt/spark/conf
       - ./spark/jobs:/opt/spark/jobs
@@ -327,6 +320,9 @@ services:
     environment:
       SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY}
       SPARK_WORKER_CORES: ${SPARK_WORKER_CORES}
+    depends_on:
+      - spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     networks:
       - data-network
   jupyter:
@@ -355,6 +351,8 @@ services:
       - ./dbt:/usr/app
       - ./dbt/.dbt:/root/.dbt
     working_dir: /usr/app/crypto_analytics
+    profiles:
+      - dev
     networks:
       - data-network
     entrypoint: ["tail", "-f", "/dev/null"]

@@ -5,6 +5,8 @@ import requests
 import logging
 import time
 import os
+import argparse
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -61,6 +63,14 @@ def get_assets(max_retries=3, timeout=30):
 
 def main():
     "API -> Raw"
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--execution-date", help="Date in YYYY-MM-DD format")
+    args = parser.parse_args()
+
+    exec_date = args.execution_date if args.execution_date else time.strftime("%Y-%m-%d")
+    logger.info(f"Running incremental load for date: {exec_date}")
+
     spark = None
 
     try:
@@ -77,8 +87,8 @@ def main():
         
         df = spark.createDataFrame(data)
         df = df.withColumn('timestamp', lit(api_timestamp))
-        df = df.withColumn('load_datetime', from_unixtime(col('timestamp')/1000))
-        df = df.withColumn('load_date', to_date(col('load_datetime')))
+        df = df.withColumn('load_date', lit(exec_date).cast("date"))
+        df = df.withColumn('load_datetime', from_unixtime(lit(time.time())))
 
         initial_count = df.count()
 
