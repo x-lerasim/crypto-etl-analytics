@@ -19,25 +19,28 @@ with DAG(
 ) as dag:
     
     ingest_bronze = SparkSubmitOperator(
-        task_id = 'ingest_bronze',
+        task_id='ingest_bronze',
         application=f'{SPARK_JOBS_PATH}/coincap_assets_brz.py',
-        conn_id='spark_default',
+        conn_id='spark_default',  # ← Оставляем conn_id
+        conf={'spark.master': 'spark://spark-master:7077'},  # ← Ключевое исправление!
         application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )
 
     process_silver = SparkSubmitOperator(
-        task_id = 'process_silver',
+        task_id='process_silver',
         application=f'{SPARK_JOBS_PATH}/dim_assets_slv.py',
         conn_id='spark_default',
+        conf={'spark.master': 'spark://spark-master:7077'},
         application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )
 
     load_clickhouse = SparkSubmitOperator(
-        task_id  = 'load_clickhouse',
+        task_id='load_clickhouse',
         application=f'{SPARK_JOBS_PATH}/assets_to_clickhouse.py',
         conn_id='spark_default',
+        conf={'spark.master': 'spark://spark-master:7077'},
         application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )

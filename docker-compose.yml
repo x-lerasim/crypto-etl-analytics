@@ -8,6 +8,7 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077'
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
@@ -19,7 +20,7 @@ x-airflow-common:
     AIRFLOW__CORE__TEST_CONNECTION: 'Enabled'
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
   volumes:
-    - spark_ivy_cache:/home/airflow/.ivy2
+    - spark_ivy_cache:/home/airflow/.ivy2:rw
     - ./spark/conf:/opt/spark/conf
     - ./spark/jobs:/opt/spark/jobs
     - ./airflow/dags:/opt/airflow/dags  
@@ -110,6 +111,7 @@ services:
 
   airflow-worker:
     <<: *airflow-common
+    user: "0:0" 
     command: celery worker
     container_name: airflow-worker
     networks:
@@ -303,6 +305,9 @@ services:
     ports:
       - "9090:8080"
       - "7077:7077"
+    environment:
+      SPARK_MASTER_HOST: "0.0.0.0"  
+      SPARK_MASTER_PORT: "7077"
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     working_dir: /opt/spark/jobs
     volumes:
