@@ -28,6 +28,8 @@ x-airflow-common:
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/jobs:/opt/airflow/jobs
   user: "${AIRFLOW_UID:-50000}:0"
+  networks:
+      - data-network 
   depends_on:
     &airflow-common-depends-on
     airflow-redis:
@@ -42,6 +44,8 @@ services:
       POSTGRES_USER: ${AIRFLOW_PG_USER}
       POSTGRES_PASSWORD: ${AIRFLOW_PG_PASS}
       POSTGRES_DB: ${AIRFLOW_PG_DB}
+    networks:
+      - data-network 
     volumes:
       - airflow_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -54,6 +58,8 @@ services:
   airflow-redis:
     container_name: airflow_redis
     image: redis:7.2-bookworm
+    networks:
+      - data-network 
     expose:
       - 6379
     healthcheck:
@@ -70,6 +76,8 @@ services:
     container_name: airflow-webserver
     ports:
       - "8080:8080"
+    networks:
+      - data-network 
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -86,6 +94,8 @@ services:
     <<: *airflow-common
     command: scheduler
     container_name: airflow-scheduler
+    networks:
+      - data-network 
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -93,10 +103,6 @@ services:
       retries: 5
       start_period: 30s
     restart: always
-    volumes:
-      - spark_ivy_cache:/home/airflow/.ivy2
-      - ./spark/conf:/opt/spark/conf
-      - ./spark/jobs:/opt/spark/jobs
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -106,6 +112,8 @@ services:
     <<: *airflow-common
     command: celery worker
     container_name: airflow-worker
+    networks:
+      - data-network 
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -118,10 +126,6 @@ services:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
     restart: always
-    volumes:
-      - spark_ivy_cache:/home/airflow/.ivy2
-      - ./spark/conf:/opt/spark/conf
-      - ./spark/jobs:/opt/spark/jobs
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -131,6 +135,8 @@ services:
     <<: *airflow-common
     command: triggerer
     container_name: airflow-triggerer
+    networks:
+      - data-network 
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -147,6 +153,8 @@ services:
     <<: *airflow-common
     entrypoint: /bin/bash
     container_name: airflow-init
+    networks:
+      - data-network 
     command:
       - -c
       - |
@@ -201,10 +209,6 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
-    volumes:
-      - ./airflow/dags:/opt/airflow/dags
-      - ./airflow/logs:/opt/airflow/logs
-      - ./airflow/plugins:/opt/airflow/plugins
   metabase-postgres:
     image: postgres:15-alpine
     restart: unless-stopped

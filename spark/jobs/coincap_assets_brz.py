@@ -16,7 +16,7 @@ logger = logging.getLogger('Raw')
 logger.info('Ingesting raw data from API to MinIO')
 
 BASE_URL = 'https://rest.coincap.io/v3'
-API_KEY = os.getenv("COINCAP_API_KEY")
+API_KEY = 'e0bd6941eb5cf15c756be46b494c982248ccbc3ab4ff976d9b905c1067994e63'
 
 if not API_KEY:
     logger.critical("COINCAP_API_KEY environment variable is not set")

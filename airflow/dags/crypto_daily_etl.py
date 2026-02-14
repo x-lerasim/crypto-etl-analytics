@@ -22,7 +22,7 @@ with DAG(
         task_id = 'ingest_bronze',
         application=f'{SPARK_JOBS_PATH}/coincap_assets_brz.py',
         conn_id='spark_default',
-        arguments=['--execution-date', '{{ ds }}'],
+        application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )
 
@@ -30,7 +30,7 @@ with DAG(
         task_id = 'process_silver',
         application=f'{SPARK_JOBS_PATH}/dim_assets_slv.py',
         conn_id='spark_default',
-        arguments=['--execution-date', '{{ ds }}'],
+        application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )
 
@@ -38,7 +38,7 @@ with DAG(
         task_id  = 'load_clickhouse',
         application=f'{SPARK_JOBS_PATH}/assets_to_clickhouse.py',
         conn_id='spark_default',
-        arguments=['--execution-date', '{{ ds }}'],
+        application_args=['--execution-date', '{{ ds }}'],
         verbose=True,
     )
     
