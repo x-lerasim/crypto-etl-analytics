@@ -8,11 +8,12 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW_CONN_SPARK_DEFAULT: 'spark://spark-master:7077'
+    AIRFLOW_CONN_SPARK_DEFAULT: '{"conn_type": "spark", "host": "spark://spark-master", "port": 7077}'
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@airflow-redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'p2p'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
@@ -29,6 +30,8 @@ x-airflow-common:
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/jobs:/opt/airflow/jobs
   user: "${AIRFLOW_UID:-50000}:0"
+  env_file:
+    - .env
   networks:
       - data-network 
   depends_on:
@@ -120,10 +123,10 @@ services:
       test:
         - "CMD-SHELL"
         - 'celery --app airflow.providers.celery.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}" || celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+      interval: 60s
+      timeout: 30s
+      retries: 10
+      start_period: 60s
     environment:
       <<: *airflow-common-env
       DUMB_INIT_SETSID: "0"
