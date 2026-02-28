@@ -104,10 +104,10 @@ def main():
             .partitionBy('load_date') \
             .parquet(raw_path)
         
-        logger.info(f"✅ Successfully loaded {initial_count} records to raw layer")
+        logger.info(f"Successfully loaded {initial_count} records to raw layer")
     
     except Exception as e:
-        logger.critical(f"❌ Job failed with error: {str(e)}", exc_info=True)
+        logger.critical(f"Job failed with error: {str(e)}", exc_info=True)
         raise
     
     finally:
