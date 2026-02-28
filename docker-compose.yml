@@ -332,7 +332,7 @@ services:
     build:
       context: .
       dockerfile: docker/spark-master.Dockerfile
-    image: spark-master:3.5.1
+    image: custom-airflow:2.8.1
     container_name: spark-master
     ports:
       - "9090:8080"
