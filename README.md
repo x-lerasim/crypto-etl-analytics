@@ -133,7 +133,7 @@ cd crypto-etl-analytics
 
 ### Запуск
 ```bash
-docker-compose up -d 
+docker compose up -d --build
 ```
 
 ---
