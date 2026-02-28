@@ -46,7 +46,7 @@ def main():
       .save()
     
   except Exception as e:
-     logger.critical(f"❌ Job failed: {str(e)}", exc_info=True)
+     logger.critical(f"Job failed: {str(e)}", exc_info=True)
 
   finally:
     if spark:
